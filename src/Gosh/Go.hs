@@ -27,6 +27,7 @@ data GoState = GoState {
       gostate_board :: GoBoard
     , gostate_stones ::  [StoneOnBoard]
     , gostate_turn :: GoPlayer
+    , gostate_previous_states :: [GoState]
       } deriving (Show, Eq)
 
 
@@ -143,13 +144,13 @@ capture_stones :: StoneOnBoard -> GoState -> (GoState, [StoneOnBoard])
 capture_stones stone go =
     let new_stones = stone : (gostate_stones go)
         (StoneOnBoard _ capturing_color) = stone
-        capturing_go = GoState (gostate_board go) new_stones (gostate_turn go)
+        capturing_go = GoState (gostate_board go) new_stones (gostate_turn go) (gostate_previous_states go)
         is_group_captured group_start_stone = let (StoneOnBoard _ group_color) = group_start_stone
                                               in group_color /= capturing_color
                                                  && is_group_enclosed group_start_stone capturing_go
         captured_stones = filter is_group_captured new_stones
         left_stones = new_stones \\ captured_stones
-        captured_go = GoState (gostate_board go) left_stones (gostate_turn go)
+        captured_go = GoState (gostate_board go) left_stones (gostate_turn go) (gostate_previous_states go)
     in (captured_go, captured_stones)
       
 
@@ -158,7 +159,7 @@ put_stone :: GoPlayer -> Position -> GoState -> Either String GoState
 put_stone player pos go =
     let new_stone = StoneOnBoard pos $ player_stone player
         (captured_go, captured_stones) = capture_stones new_stone go
-        new_go = GoState (gostate_board captured_go) (gostate_stones captured_go) (opposite_player player)
+        new_go = GoState (gostate_board captured_go) (gostate_stones captured_go) (opposite_player player) (go: gostate_previous_states go)
     in
       if player == gostate_turn go
       then

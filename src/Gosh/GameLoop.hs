@@ -37,7 +37,7 @@ make_a_turn player go = do
                     putStrLn "try more"
                     make_a_turn player go
                 Right next_go -> return $ ContinueGame $ next_go
-        'a' -> return $ ContinueGame $ GoState (gostate_board go) (gostate_stones go) (opposite_player player)
+        'a' -> return $ ContinueGame $ go
         'd' -> return $ StopGame go
         other -> do
            putStrLn "invalid input. try more"
