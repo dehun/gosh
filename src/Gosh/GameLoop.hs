@@ -1,6 +1,7 @@
 module Gosh.GameLoop where
 
 import Gosh.Go
+import Gosh.Scoring
 import Gosh.TerminalDrawer
     
 import Data.List
@@ -49,7 +50,7 @@ game_loop player go = do
     BlackPlayer -> putStrLn "black player turn"
     WhitePlayer -> putStrLn "white player turn"
   putStrLn $ show_game go
-  putStrLn $ show_affinity go
+  putStrLn $ show_affinity go $ game_affinity go
   next_go <- make_a_turn player go
   case next_go of
     ContinueGame next_go -> game_loop (opposite_player player) next_go

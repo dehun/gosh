@@ -59,5 +59,10 @@ estimated_player_area player go =
                                return (Just player == affinity)) (all_positions go)) Data.Map.empty
 
 
+game_affinity :: GoState -> Data.Map.Map Position (Maybe GoPlayer)
+game_affinity go =
+    snd (runState (mapM (\p -> estimate_position_affinity p go) (all_positions go)) Data.Map.empty)
+
+
 score :: GoPlayer -> GoState -> Integer
 score player go = toInteger $ length $ estimated_player_area player go

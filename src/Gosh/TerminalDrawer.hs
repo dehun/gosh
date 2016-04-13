@@ -9,6 +9,7 @@ import Data.Maybe
 import Data.Either
 import Control.Monad.State
 import qualified Data.Text    
+
     
 show_game :: GoState -> String
 show_game go =
@@ -25,18 +26,17 @@ show_game go =
     in unlines $  map show_game_row [1..board_height]
 
 
-show_affinity :: GoState -> String
-show_affinity go =
+show_affinity :: GoState -> Data.Map.Map Position (Maybe GoPlayer) -> String
+show_affinity go affinity_mappings =
     let
         board_width = goboard_width $ gostate_board go
         board_height = goboard_height $ gostate_board go
-        show_game_row r = do
-          rows <- (mapM (\c ->show_game_cell (r, c)) [1..board_width])
-          return $ concat rows
-        show_game_cell pos = do
-          affinity <- (estimate_position_affinity pos go)
-          case affinity of
-            Just BlackPlayer -> return "b"
-            Just WhitePlayer -> return "w"
-            Nothing -> return "-"
-    in unlines $ fst $ runState (mapM show_game_row [1..board_height]) Data.Map.empty       
+        show_game_row r =
+          let rows =  (map (\c ->show_game_cell (r, c)) [1..board_width])
+          in concat rows
+        show_game_cell pos = 
+          case join $ Data.Map.lookup pos affinity_mappings of
+            Just BlackPlayer -> "b"
+            Just WhitePlayer -> "w"
+            Nothing -> "-"
+    in unlines $ map show_game_row [1..board_height]
