@@ -1,8 +1,12 @@
 import Data.List
+import qualified Data.Map
 import Data.Maybe
 import Data.Either
+import Control.Monad.State
 import qualified Data.Text
 
+
+type Position = (Integer, Integer)    
 
 data GoStone = BlackStone | WhiteStone
                deriving (Show, Eq)
@@ -11,7 +15,7 @@ data GoBoard = GoBoard { goboard_width :: Integer
                        , goboard_height :: Integer}
                deriving (Show, Eq)
 
-data StoneOnBoard = StoneOnBoard (Integer, Integer) GoStone
+data StoneOnBoard = StoneOnBoard Position GoStone
                   deriving (Show, Eq)
 
 data GoPlayer = WhitePlayer | BlackPlayer
@@ -24,7 +28,7 @@ data GoState = GoState {
       } deriving (Show, Eq)
 
 
-get_stone_at_position :: GoState -> (Integer, Integer) -> Maybe StoneOnBoard
+get_stone_at_position :: GoState -> Position -> Maybe StoneOnBoard
 get_stone_at_position go requested_pos =
     let
         stones = gostate_stones go
@@ -33,6 +37,13 @@ get_stone_at_position go requested_pos =
         [] -> Nothing
         [stone] ->  Just stone
         other -> error "more than one stone at one position"
+
+
+stone_on_board_color :: StoneOnBoard -> GoStone
+stone_on_board_color (StoneOnBoard _ color) = color
+
+stone_on_board_position :: StoneOnBoard -> Position
+stone_on_board_position (StoneOnBoard pos _) = pos
 
 
 show_game :: GoState -> String
@@ -54,6 +65,10 @@ player_stone :: GoPlayer -> GoStone
 player_stone WhitePlayer = WhiteStone
 player_stone BlackPlayer = BlackStone
 
+stone_of_player :: GoStone -> GoPlayer
+stone_of_player BlackStone = BlackPlayer
+stone_of_player WhiteStone = WhitePlayer                             
+
 
 opposite_player :: GoPlayer -> GoPlayer
 opposite_player WhitePlayer = BlackPlayer
@@ -64,7 +79,7 @@ opposite_stone WhiteStone = BlackStone
 opposite_stone BlackStone = WhiteStone                            
 
 
-is_position_on_board :: GoState -> (Integer, Integer) -> Bool
+is_position_on_board :: GoState -> Position -> Bool
 is_position_on_board go (row, col) =
     let
         board_width = goboard_width $ gostate_board go
@@ -76,11 +91,11 @@ is_position_on_board go (row, col) =
       && (col <= board_width)
 
 
-stone_next_positions :: GoState -> StoneOnBoard -> [(Integer, Integer)]
-stone_next_positions go (StoneOnBoard stone_pos stone) =
+get_next_positions :: GoState -> Position -> [Position]
+get_next_positions go pos =
     let
         possible_positions = map
-                             (\(row, col) -> (fst stone_pos + row, snd stone_pos + col))
+                             (\(row, col) -> (fst pos + row, snd pos + col))
                              [(1, 0), (-1, 0), (0, 1), (0, -1)]
         next_positions = filter (is_position_on_board go) possible_positions
     in next_positions
@@ -90,7 +105,7 @@ stone_neighbours go stone =
     map fromJust
             (filter
              (/= Nothing)
-             (map (get_stone_at_position go) (stone_next_positions go stone)))
+             (map (get_stone_at_position go) (get_next_positions go (stone_on_board_position stone))))
 
 
 stone_group :: GoState -> StoneOnBoard -> [StoneOnBoard]
@@ -110,10 +125,10 @@ stone_group go start_stone =
     in expand_stone [start_stone] start_stone
 
                               
-single_stone_liberties :: GoState -> StoneOnBoard -> [(Integer, Integer)]
+single_stone_liberties :: GoState -> StoneOnBoard -> [Position]
 single_stone_liberties go start_stone =
     let neighbours = stone_neighbours go start_stone
-        next_positions = stone_next_positions go start_stone 
+        next_positions = get_next_positions go (stone_on_board_position start_stone)
     in
       filter (\pos -> case get_stone_at_position go pos
                       of Just _ -> False
@@ -121,12 +136,12 @@ single_stone_liberties go start_stone =
       
 
 
-stone_group_liberties :: GoState -> StoneOnBoard -> [(Integer, Integer)]
+stone_group_liberties :: GoState -> StoneOnBoard -> [Position]
 stone_group_liberties go start_stone =
     concat $ map (single_stone_liberties go) (stone_group go start_stone)
 
 
-is_free_position :: GoState -> (Integer, Integer) -> Bool
+is_free_position :: GoState -> Position -> Bool
 is_free_position go pos =
     case get_stone_at_position go pos of
       Just _ -> False
@@ -152,7 +167,7 @@ capture_stones stone go =
       
 
 
-put_stone :: GoPlayer -> (Integer, Integer) -> GoState -> Either String GoState
+put_stone :: GoPlayer -> Position -> GoState -> Either String GoState
 put_stone player pos go =
     let new_stone = StoneOnBoard pos $ player_stone player
         (captured_go, captured_stones) = capture_stones new_stone go
@@ -167,7 +182,7 @@ put_stone player pos go =
           else Left $  "place is not free: " ++ (show pos)
       else Left ("not turn of that player " ++ show player)
 
-all_positions :: GoState -> [(Integer, Integer)]
+all_positions :: GoState -> [Position]
 all_positions go =
     let
         width = goboard_width $ gostate_board go
@@ -192,28 +207,47 @@ get_all_groups go =
 
 
 -- scoring
-positions_distance :: (Integer, Integer) -> (Integer, Integer) -> Float
-positions_distance lhs rhs =
-    let (xl, yl) = lhs
-        (xr, yr) = rhs
-    in sqrt ((fromInteger xl - fromInteger xr) ** 2 + (fromInteger yl - fromInteger yr) ** 2)
+get_surrounding_stones :: Position -> GoState -> ([StoneOnBoard], [Position])
+get_surrounding_stones start_pos go =
+    let
+        inner_get_surrounding_stones :: Position -> GoState -> State [Position] [StoneOnBoard] 
+        inner_get_surrounding_stones pos go = do
+            let surrouding_positions = get_next_positions go pos
+            expanded <- get
+            if find (==pos) expanded == Nothing
+            then do
+                put (pos:expanded)
+                case get_stone_at_position go pos of
+                  Just stone -> return [stone]
+                  Nothing -> foldM (\s p -> do
+                                      stones <- inner_get_surrounding_stones p go
+                                      return (stones ++ s)) [] surrouding_positions
+            else return []
+    in
+      runState (inner_get_surrounding_stones start_pos go) []
 
-estimate_black_affinity :: (Integer, Integer) -> GoState -> Float
-estimate_black_affinity start_pos go =
-    foldl (\acc pos ->
-               case get_stone_at_position go pos
-               of Just (StoneOnBoard _ BlackStone) -> acc + 1.0 / (positions_distance start_pos pos)
-                  Just (StoneOnBoard _ WhiteStone) -> acc - 1.0 / (positions_distance start_pos pos)
-                  Nothing -> acc
-                  )
-              0.0
-              (all_positions go)
 
-estimate_position_affinity :: (Integer, Integer) -> GoState -> GoPlayer 
-estimate_position_affinity pos go =
-    if estimate_black_affinity pos go > 0.0
-    then BlackPlayer
-    else WhitePlayer
+estimate_position_affinity :: Position -> GoState
+                           -> State (Data.Map.Map Position (Maybe GoPlayer)) (Maybe GoPlayer)
+estimate_position_affinity pos go = do
+  cache <- get
+  case Data.Map.lookup pos cache of
+    Just affinity -> return affinity
+    Nothing -> do
+        let (surrounding_stones, surrounded_area) = get_surrounding_stones pos go
+        if length surrounding_stones < 1
+        then return Nothing
+        else
+            if all
+                   (\(StoneOnBoard _ color) -> color == stone_on_board_color (head surrounding_stones))
+                   surrounding_stones
+            then do
+              let affinity = Just (stone_of_player $ (stone_on_board_color (head surrounding_stones)))
+              mapM_ (\p -> do
+                       old_cache <- get
+                       put (Data.Map.insert p affinity old_cache)) surrounded_area
+              return $ affinity
+            else return Nothing
 
 
 show_affinity :: GoState -> String
@@ -221,20 +255,23 @@ show_affinity go =
     let
         board_width = goboard_width $ gostate_board go
         board_height = goboard_height $ gostate_board go
-        show_game_row row =
-            concat $ map (\col -> show_game_cell (row, col)) [1..board_width]
-        show_game_cell pos =
-            case estimate_position_affinity pos go of
-              BlackPlayer -> "b"
-              WhitePlayer -> "w"
-    in unlines $  map show_game_row [1..board_height]           
+        show_game_row r = do
+          rows <- (mapM (\c ->show_game_cell (r, c)) [1..board_width])
+          return $ concat rows
+        show_game_cell pos = do
+          affinity <- (estimate_position_affinity pos go)
+          case affinity of
+            Just BlackPlayer -> return "b"
+            Just WhitePlayer -> return "w"
+            Nothing -> return "-"
+    in unlines $ fst $ runState (mapM show_game_row [1..board_height]) Data.Map.empty
     
-
-
          
-estimated_player_area :: GoPlayer -> GoState -> [(Integer, Integer)]
+estimated_player_area :: GoPlayer -> GoState -> [Position]
 estimated_player_area player go =
-    filter (\p -> player == estimate_position_affinity p go) (all_positions go)
+    fst $ runState (filterM (\p -> do
+                               affinity <- estimate_position_affinity p go
+                               return (Just player == affinity)) (all_positions go)) Data.Map.empty
 
 
 score :: GoPlayer -> GoState -> Integer
@@ -279,6 +316,7 @@ game_loop player go = do
     BlackPlayer -> putStrLn "black player turn"
     WhitePlayer -> putStrLn "white player turn"
   putStrLn $ show_game go
+  putStrLn $ show_affinity go
   next_go <- make_a_turn player go
   case next_go of
     ContinueGame next_go -> game_loop (opposite_player player) next_go
