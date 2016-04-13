@@ -178,18 +178,3 @@ all_positions go =
         height = goboard_height $ gostate_board go
     in
       concat (map (\row -> map (\col -> (row, col)) [1..width]) [1..height])
-      
-
-get_all_groups :: GoState -> [[StoneOnBoard]]           
-get_all_groups go =
-    foldl
-    (\groups pos ->
-         if any (\(StoneOnBoard stone_pos _) -> stone_pos == pos) (concat groups)
-         then groups
-         else
-             case get_stone_at_position go pos
-             of Nothing -> groups
-                Just start_stone -> (stone_group go start_stone) : groups
-    )
-    []
-    (all_positions go)
