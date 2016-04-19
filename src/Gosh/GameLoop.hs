@@ -14,34 +14,54 @@ import qualified Data.Text
 data GoGameContinuation = ContinueGame GoState
                         | StopGame GoState
                           deriving (Show, Eq)
+
+data PlayerTurn = PassTurn
+                | PutStoneTurn Position
+                | DrawnTurn
+                  deriving (Show, Eq)
+
+ 
+parse_position :: String -> Maybe Position                          
+parse_position input =
+    let coords = map (\s -> (read (Data.Text.unpack s)) :: Integer)
+                 (filter (/=Data.Text.empty) (Data.Text.split (==' ')
+                                                  (Data.Text.pack (tail input))))
+    in case coords of
+         (row: col: []) -> return (row, col)
+         other -> Nothing
+
+
+parse_turn :: String -> Maybe PlayerTurn
+parse_turn input =
+    let headm [] = Nothing
+        headm (x:_) = Just x
+    in do
+      first_char <- headm input
+      case first_char of
+         'p' -> do
+           pos <- parse_position $ tail input
+           return $ PutStoneTurn pos
+         'a' -> return $ PassTurn
+         'd' -> return $ DrawnTurn
     
 
 make_a_turn :: GoPlayer -> GoState -> IO GoGameContinuation
 make_a_turn player go = do
     putStrLn "make your turn: [p]ut stone at <y> <x>, p[a]ss, [d]rawn"
     choice <- getLine
-    if length choice == 0
-    then do
-      putStrLn "invalid input"
-      make_a_turn player go
-    else do
-      case head choice of
-        'p' -> do
-           let parse_position input = map (\s -> (read (Data.Text.unpack s)) :: Integer)
-                                      (filter (/=Data.Text.empty) (Data.Text.split (==' ')
-                                                                       (Data.Text.pack (tail input))))
-           let (row: col: []) =  parse_position choice
-           case put_stone player (row, col) go of
-                Left reason -> do
-                    putStrLn $ "invalid turn : " ++ reason
-                    putStrLn "try more"
-                    make_a_turn player go
-                Right next_go -> return $ ContinueGame $ next_go
-        'a' -> return $ ContinueGame $ go
-        'd' -> return $ StopGame go
-        other -> do
-           putStrLn "invalid input. try more"
-           make_a_turn player go
+    case parse_turn choice of
+      Nothing -> do
+          putStrLn "cant parse input. try more"
+          make_a_turn player go
+      Just (PutStoneTurn pos) ->
+          do case put_stone player pos go of
+               Left reason -> do
+                     putStrLn $ "invalid turn : " ++ reason
+                     putStrLn "try more"
+                     make_a_turn player go
+               Right next_go -> return $ ContinueGame $ next_go
+      Just PassTurn -> return $ ContinueGame $ go
+      Just DrawnTurn -> return $ StopGame go
 
 
 game_loop :: GoPlayer -> GoState -> IO ()

@@ -17,6 +17,10 @@ data GoBoard = GoBoard { goboard_width :: Integer
                        , goboard_height :: Integer}
                deriving (Show, Eq)
 
+standard_small_board = GoBoard 9 9
+standard_medium_board = GoBoard 13 13
+standard_big_board = GoBoard 19 19                        
+
 data StoneOnBoard = StoneOnBoard Position GoStone
                   deriving (Show, Eq)
 
