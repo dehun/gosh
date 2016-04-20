@@ -45,23 +45,13 @@ parse_turn input =
          'd' -> return $ DrawnTurn
     
 
-make_a_turn :: GoPlayer -> GoState -> IO GoGameContinuation
-make_a_turn player go = do
-    putStrLn "make your turn: [p]ut stone at <y> <x>, p[a]ss, [d]rawn"
-    choice <- getLine
-    case parse_turn choice of
-      Nothing -> do
-          putStrLn "cant parse input. try more"
-          make_a_turn player go
-      Just (PutStoneTurn pos) ->
-          do case put_stone player pos go of
-               Left reason -> do
-                     putStrLn $ "invalid turn : " ++ reason
-                     putStrLn "try more"
-                     make_a_turn player go
-               Right next_go -> return $ ContinueGame $ next_go
-      Just PassTurn -> return $ ContinueGame $ go
-      Just DrawnTurn -> return $ StopGame go
+make_a_turn :: GoPlayer -> GoState -> PlayerTurn -> Either String GoGameContinuation
+make_a_turn player go turn = do
+    case turn of
+      PutStoneTurn pos ->
+          ContinueGame <$> put_stone player pos go
+      PassTurn -> Right $ ContinueGame $ go
+      DrawnTurn -> Right $ StopGame go
 
 
 game_loop :: GoPlayer -> GoState -> IO ()
@@ -71,10 +61,19 @@ game_loop player go = do
     WhitePlayer -> putStrLn "white player turn"
   putStrLn $ show_game go
   putStrLn $ show_affinity go $ game_affinity go
-  next_go <- make_a_turn player go
-  case next_go of
-    ContinueGame next_go -> game_loop (opposite_player player) next_go
-    StopGame stop_go ->
-        do
-          putStrLn "game ended"
+
+  putStrLn "make your turn: [p]ut stone at <y> <x>, p[a]ss, [d]rawn"
+  choice <- getLine
+  case parse_turn choice of
+    Just turn -> do           
+      let next_go = make_a_turn player go turn
+      case next_go of
+        Right (ContinueGame next_go) -> game_loop (opposite_player player) next_go
+        Right (StopGame stop_go) -> putStrLn "game ended"
+        Left reason -> do
+                        putStrLn $ "error happened: " ++ reason
+                        game_loop player go
+    Nothing -> do
+        putStrLn "invalid input"
+        game_loop player go
     
