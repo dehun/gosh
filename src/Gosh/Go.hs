@@ -164,16 +164,24 @@ put_stone player pos go =
     let new_stone = StoneOnBoard pos $ player_stone player
         (captured_go, captured_stones) = capture_stones new_stone go
         new_go = GoState (gostate_board captured_go) (gostate_stones captured_go) (opposite_player player) (go: gostate_previous_states go)
-    in
-      if player == gostate_turn go
-      then
-          if (is_free_position go pos)
-          then if (length (stone_group_liberties new_go new_stone) > 0)
-               then Right new_go
-               else Left $ "stone group got no liberties with new stone at " ++ show pos
-          else Left $  "place is not free: " ++ (show pos)
-      else Left ("not turn of that player " ++ show player)
-
+        ensure_right_player = if player == gostate_turn go
+                              then Right ()
+                              else Left ("not turn of that player " ++ show player)
+        ensure_proper_position = if is_position_on_board go pos
+                                 then Right ()
+                                 else Left $ "position is not on board: " ++ (show pos)
+        ensure_position_free = if is_free_position go pos
+                               then Right ()
+                               else Left $  "place is not free: " ++ (show pos)
+        ensure_not_suicide = if (length (stone_group_liberties new_go new_stone) > 0)
+                             then Right ()
+                             else Left $ "stone group got no liberties with new stone at " ++ show pos
+    in do
+      ensure_right_player
+      ensure_proper_position
+      ensure_position_free
+      ensure_not_suicide
+      Right new_go
 
 all_positions :: GoState -> [Position]
 all_positions go =
