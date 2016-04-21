@@ -163,7 +163,8 @@ put_stone :: GoPlayer -> Position -> GoState -> Either String GoState
 put_stone player pos go =
     let new_stone = StoneOnBoard pos $ player_stone player
         (captured_go, captured_stones) = capture_stones new_stone go
-        new_go = GoState (gostate_board captured_go) (gostate_stones captured_go) (opposite_player player) (go: gostate_previous_states go)
+        new_go = GoState (gostate_board captured_go) (gostate_stones captured_go)
+                         (opposite_player player) (go: gostate_previous_states go)
         ensure_right_player = if player == gostate_turn go
                               then Right ()
                               else Left ("not turn of that player " ++ show player)
@@ -183,6 +184,7 @@ put_stone player pos go =
       ensure_not_suicide
       Right new_go
 
+
 all_positions :: GoState -> [Position]
 all_positions go =
     let
@@ -190,3 +192,6 @@ all_positions go =
         height = goboard_height $ gostate_board go
     in
       concat (map (\row -> map (\col -> (row, col)) [1..width]) [1..height])
+
+
+             
