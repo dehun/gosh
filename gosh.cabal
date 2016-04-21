@@ -18,6 +18,8 @@ library
   default-language:    Haskell2010
   build-depends:       base >=4.8 && <4.9
                      , containers
+                     , unordered-containers
+                     , hashable
                      , mtl
                      , text
   Exposed-modules:   Gosh.Go
@@ -46,6 +48,7 @@ Test-Suite test-gosh
     hs-source-dirs:      test    
     build-depends: base
                  , hspec
+                 , unordered-containers
                  , gosh
 
   

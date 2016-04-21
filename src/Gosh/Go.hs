@@ -1,39 +1,49 @@
+{-# LANGUAGE DeriveGeneric #-}
+
 module Gosh.Go where
 
 import Data.List
 import qualified Data.Map
+import qualified Data.HashSet
 import Data.Maybe
 import Data.Either
 import Control.Monad.State
 import qualified Data.Text
+import Data.Hashable
+import GHC.Generics    
 
     
 type Position = (Integer, Integer)    
 
 data GoStone = BlackStone | WhiteStone
-               deriving (Show, Eq)
+               deriving (Show, Eq, Generic)
 
 data GoBoard = GoBoard { goboard_width :: Integer
                        , goboard_height :: Integer}
-               deriving (Show, Eq)
+               deriving (Show, Eq, Generic)
+
 
 standard_small_board = GoBoard 9 9
 standard_medium_board = GoBoard 13 13
 standard_big_board = GoBoard 19 19                        
 
 data StoneOnBoard = StoneOnBoard Position GoStone
-                  deriving (Show, Eq)
+                  deriving (Show, Eq, Generic)
 
 data GoPlayer = WhitePlayer | BlackPlayer
-              deriving (Show, Eq)
+              deriving (Show, Eq, Generic)
 
 data GoState = GoState {
       gostate_board :: GoBoard
-    , gostate_stones ::  [StoneOnBoard]
+    , gostate_stones ::  Data.HashSet.HashSet StoneOnBoard
     , gostate_turn :: GoPlayer
     , gostate_previous_states :: [GoState]
       } deriving (Show, Eq)
 
+instance Hashable GoStone                                 
+instance Hashable GoBoard                      
+instance Hashable StoneOnBoard           
+instance Hashable GoPlayer           
 
 
 get_stone_at_position :: GoState -> Position -> Maybe StoneOnBoard
@@ -41,10 +51,9 @@ get_stone_at_position go requested_pos =
     let
         stones = gostate_stones go
     in
-      case filter (\(StoneOnBoard pos stone) -> pos == requested_pos) stones of
+      case Data.HashSet.toList $ Data.HashSet.filter (\(StoneOnBoard pos stone) -> pos == requested_pos) stones of
         [] -> Nothing
         [stone] ->  Just stone
-        other -> error "more than one stone at one position"
 
 
 stone_on_board_color :: StoneOnBoard -> GoStone
@@ -144,16 +153,16 @@ is_group_enclosed :: StoneOnBoard -> GoState -> Bool
 is_group_enclosed group_start_stone go = length (stone_group_liberties go group_start_stone) == 0
 
 
-capture_stones :: StoneOnBoard -> GoState -> (GoState, [StoneOnBoard])
+capture_stones :: StoneOnBoard -> GoState -> (GoState, Data.HashSet.HashSet StoneOnBoard)
 capture_stones stone go =
-    let new_stones = stone : (gostate_stones go)
+    let new_stones = Data.HashSet.insert stone (gostate_stones go)
         (StoneOnBoard _ capturing_color) = stone
         capturing_go = GoState (gostate_board go) new_stones (gostate_turn go) (gostate_previous_states go)
         is_group_captured group_start_stone = let (StoneOnBoard _ group_color) = group_start_stone
                                               in group_color /= capturing_color
                                                  && is_group_enclosed group_start_stone capturing_go
-        captured_stones = filter is_group_captured new_stones
-        left_stones = new_stones \\ captured_stones
+        captured_stones = Data.HashSet.filter is_group_captured new_stones
+        left_stones = Data.HashSet.difference new_stones captured_stones
         captured_go = GoState (gostate_board go) left_stones (gostate_turn go) (gostate_previous_states go)
     in (captured_go, captured_stones)
       
@@ -177,11 +186,17 @@ put_stone player pos go =
         ensure_not_suicide = if (length (stone_group_liberties new_go new_stone) > 0)
                              then Right ()
                              else Left $ "stone group got no liberties with new stone at " ++ show pos
+        previous_states = gostate_previous_states go
+        ensure_not_repeated_position = if (length previous_states >= 1)
+                                       && (gostate_stones (head previous_states) == gostate_stones new_go)
+                                       then Left "move repeats previous state"
+                                       else Right ()
     in do
       ensure_right_player
       ensure_proper_position
       ensure_position_free
       ensure_not_suicide
+      ensure_not_repeated_position
       Right new_go
 
 
@@ -193,5 +208,7 @@ all_positions go =
     in
       concat (map (\row -> map (\col -> (row, col)) [1..width]) [1..height])
 
+initial_go_state = GoState standard_small_board Data.HashSet.empty BlackPlayer []
+    
 
              
